@@ -4,6 +4,7 @@
 #- library(pvclust)
 #- library(mclust)
 #- library(fpc)
+#- Detail explication of functions
 #- Random dataset development to test efficacy between mvls and other method in litterature
 #- Thesis write
 
