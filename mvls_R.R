@@ -1,0 +1,443 @@
+### Library ###
+
+library(randomForestSRC)
+library(ggplot2)
+library(mice)
+library(zoo)
+library(reshape2)
+
+### Exclude no long data ###
+
+exclude<-function(data){
+  db.null<-data
+  db.exclude<-data
+  for(i in 1:dim(data)[1]){
+    for(l in 1:dim(data)[2]){
+      if(is.na(data[i,l])==T){db.null[i,l]<-0
+      }else(db.null[i,l]<-1)
+    }
+  }
+  for(i in 1:dim(data)[1]){
+    if(sum(db.null[i,])==0){db.exclude<-data[-i,]}
+  }
+  return(db.exclude)
+}
+
+### Normalize function ###
+
+normalize <- function(data){
+  index<-NULL
+  for (i in 1:dim(data)[1]){
+    index[i]<-max(data[i,], na.rm = T)
+    data[i,]<-data[i,]/max(data[i,], na.rm = T)
+  }
+  result<-return(list(data=data,index=index))
+}
+
+### Variation matrix ###
+
+var.matrix<-function(data,d=.1){
+  matrix.1<-data.frame(NULL)
+  for (z in 1:(dim(data)[2]-1)){
+    for (i in 1:dim(data)[1]){
+      if(is.na(data[i,z])==T){
+        matrix.1[i,z]<-3
+      } else if(is.na(data[i,z+1])==T){
+        matrix.1[i,z]<-3
+      } else if(data[i,z+1]>(data[i,z]+d)){
+        matrix.1[i,z]<-1
+      } else if(data[i,z+1]<(data[i,z]-d)){
+        matrix.1[i,z]<-2
+      } else{matrix.1[i,z]<-0
+      }
+    }
+  }
+  matrix.2<-data.frame(NULL)
+  for (z in 1:(dim(data)[2]-2)){
+    for (i in 1:dim(data)[1]){
+      if(is.na(data[i,z])==T){
+        matrix.2[i,z]<-3
+      } else if(is.na(data[i,z+2])==T){
+        matrix.2[i,z]<-3
+      } else if(data[i,z+2]>(data[i,z]+d)){
+        matrix.2[i,z]<-1
+      } else if(data[i,z+2]<(data[i,z]-d)){
+        matrix.2[i,z]<-2
+      } else{matrix.2[i,z]<-0
+      }
+    }
+  }
+  matrix.3<-data.frame(NULL)
+  for (i in 1:dim(data)[1]){
+    if(is.na(data[i,1])==T){
+      matrix.3[i,1]<-3
+    } else if(is.na(data[i,dim(data)[2]])==T){
+      matrix.3[i,1]<-3
+    } else if(data[i,dim(data)[2]]>(data[i,1]+d)){
+      matrix.3[i,1]<-1
+    } else if(data[i,dim(data)[2]]<(data[i,1]-d)){
+      matrix.3[i,1]<-2
+    } else{matrix.3[i,1]<-0
+    }
+  }
+  matrix<-cbind(matrix.1,matrix.2,matrix.3)
+  return(matrix)
+}
+
+###  Pre-impute data ###
+preimputation<-function(data, imp.method='mean'){
+  if(imp.method=='mean'){
+    data<-mice(data, method = 'mean',printFlag = F)
+    datapreimput<-complete(data)
+  }
+  if(imp.method=='locf'){
+    data<-t(db.prov)
+    data<-na.locf(data)
+    data<-t(data)
+    data<-mice(data, method = 'mean', printFlag = F)
+    datapreimput<-complete(data)
+  }
+  return(datapreimput)
+}
+
+### Function toclusterfunc ###
+
+toclusterfunc.noimp<-function(data, d){
+  data<-exclude(data)
+  matrix<-data
+  result<-normalize(data)
+  data<-result$data
+  index<-result$index
+  db.var<-var.matrix(data,d)
+  result<-return(list(data=data,index=index,vari.matrix=db.var,matrix=matrix))
+}
+
+toclusterfunc.imp<-function(data, d, imp.method='mean'){
+  data<-exclude(data)
+  matrix<-data
+  data.imp<-preimputation(data, imp.method)
+  result.imp<-normalize(data)
+  db.var<-var.matrix(result.imp$data,d)
+  result<-normalize(data)
+  data<-result$data
+  index<-result$index
+  result<-return(list(data=data,index=index,vari.matrix=db.var,matrix=matrix))
+}
+
+### Imputation of missing data ###
+
+imputation.kh<-function(data, vari.matrix, method='k', cluster=6, nstart=20){
+  if(method=='k'){
+    clusters <- kmeans(vari.matrix, cluster, nstart)
+    clusterCut <- clusters$cluster
+  }else if(method=='h'){
+    clusters <- hclust(dist(vari.matrix))
+    clusterCut <- cutree(clusters, cluster) 
+  }
+  clu.matrix<-matrix(rep(clusterCut,dim(data)[2]),ncol =(dim(data)[2]))
+  sd.1.j<-matrix(c(rep(NA,(dim(data)[2]*dim(data)[1]))),ncol=dim(data)[2],nrow=dim(data)[1])
+  sd.1.k<-matrix(c(rep(NA,(dim(data)[2]*dim(data)[1]))),ncol=dim(data)[2],nrow=dim(data)[1])
+  for(i in 1:dim(data)[2]){
+    for(l in 1:dim(data)[1]){
+      if(is.na(data[l,i])==T){
+        if(i<(dim(data)[2]-1)){ 
+          if(is.na(data[l,(i+1)])==F){
+            val<-as.vector(as.matrix(which(clusterCut==clu.matrix[l,i]))[,1])
+            sd.1.j[l,i]<-rnorm(1, mean=0, sd=sd(!is.na(data[c(val),i])))
+            sd.1.k[l,i]<-rnorm(1, mean=0, sd=sd(!is.na(data[c(val),(i+1)])))
+            j<-mean(data[c(val),i],na.rm = T)+sd.1.j[l,i]
+            k<-mean(data[c(val),(i+1)], na.rm = T)+sd.1.k[l,i]
+            if(is.na(j)==F && is.na(k)==F){
+              if((data[l,(i+1)]+(j-k))>1){h<-1
+              }else if((data[l,(i+1)]+(j-k))<0){h<-0
+              }else(h<-data[l,(i+1)]+(j-k))
+              data[l,i]<-h
+            }
+          }
+          if(is.na(data[l,(i+1)])==T && is.na(data[l,(i+2)])==F){
+            val<-as.vector(as.matrix(which(clusterCut==clu.matrix[l,i]))[,1])
+            sd.1.j[l,i]<-rnorm(1, mean=0, sd=sd(!is.na(data[c(val),i])))
+            sd.1.k[l,i]<-rnorm(1, mean=0, sd=sd(!is.na(data[c(val),(i+2)])))
+            j<-mean(data[c(val),i],na.rm = T)+sd.1.j[l,i]
+            k<-mean(data[c(val),(i+2)], na.rm = T)+sd.1.k[l,i]
+            if(is.na(j)==F && is.na(k)==F){
+              if((data[l,(i+2)]+(j-k))>1){h<-1
+              }else if((data[l,(i+2)]+(j-k))<0){h<-0
+              }else(h<-data[l,(i+2)]+(j-k))
+              data[l,i]<-h
+            }
+          }
+        }
+        if(i==(dim(data)[2]-1)){ 
+          if(is.na(data[l,(i-1)])==F){
+            val<-as.vector(as.matrix(which(clusterCut==clu.matrix[l,i]))[,1])
+            sd.1.j[l,i]<-rnorm(1, mean=0, sd=sd(!is.na(data[c(val),i])))
+            sd.1.k[l,i]<-rnorm(1, mean=0, sd=sd(!is.na(data[c(val),(i-1)])))
+            j<-mean(data[c(val),i],na.rm = T)+sd.1.j[l,i]
+            k<-mean(data[c(val),(i-1)], na.rm = T)+sd.1.k[l,i]
+            if(is.na(j)==F && is.na(k)==F){
+              if((data[l,(i-1)]-(j-k))>1){h<-1
+              }else if((data[l,(i-1)]-(j-k))<0){h<-0
+              }else(h<-data[l,(i-1)]-(j-k))
+              data[l,i]<-h
+            }
+          }
+          if(is.na(data[l,(i-1)])==T && is.na(data[l,(i-2)])==F){
+            val<-as.vector(as.matrix(which(clusterCut==clu.matrix[l,i]))[,1])
+            sd.1.j[l,i]<-rnorm(1, mean=0, sd=sd(!is.na(data[c(val),i])))
+            sd.1.k[l,i]<-rnorm(1, mean=0, sd=sd(!is.na(data[c(val),(i-2)])))
+            j<-mean(data[c(val),i],na.rm = T)+sd.1.j[l,i]
+            k<-mean(data[c(val),(i-2)], na.rm = T)+sd.1.k[l,i]
+            if(is.na(j)==F && is.na(k)==F){
+              if((data[l,(i-2)]-(j-k))>1){h<-1
+              }else if((data[l,(i-2)]-(j-k))<0){h<-0
+              }else(h<-data[l,(i-2)]-(j-k))
+              data[l,i]<-h
+            }
+          }
+        }
+        if(i==(dim(data)[2])){ 
+          if(is.na(data[l,(i-1)])==F){
+            val<-as.vector(as.matrix(which(clusterCut==clu.matrix[l,i]))[,1])
+            sd.1.j[l,i]<-rnorm(1, mean=0, sd=sd(!is.na(data[c(val),i])))
+            sd.1.k[l,i]<-rnorm(1, mean=0, sd=sd(!is.na(data[c(val),(i-1)])))
+            j<-mean(data[c(val),i],na.rm = T)+sd.1.j[l,i]
+            k<-mean(data[c(val),(i-1)], na.rm = T)+sd.1.k[l,i]
+            if(is.na(j)==F && is.na(k)==F){
+              if((data[l,(i-1)]-(j-k))>1){h<-1
+              }else if((data[l,(i-1)]-(j-k))<0){h<-0
+              }else(h<-data[l,(i-1)]-(j-k))
+              data[l,i]<-h
+            }
+          }
+          if(is.na(data[l,(i-1)])==T && is.na(data[l,(i-2)])==F){
+            val<-as.vector(as.matrix(which(clusterCut==clu.matrix[l,i]))[,1])
+            sd.1.j[l,i]<-rnorm(1, mean=0, sd=sd(!is.na(data[c(val),i])))
+            sd.1.k[l,i]<-rnorm(1, mean=0, sd=sd(!is.na(data[c(val),(i-2)])))
+            j<-mean(data[c(val),i],na.rm = T)+sd.1.j[l,i]
+            k<-mean(data[c(val),(i-2)], na.rm = T)+sd.1.k[l,i]
+            if(is.na(j)==F && is.na(k)==F){
+              if((data[l,(i-2)]-(j-k))>1){h<-1
+              }else if((data[l,(i-2)]-(j-k))<0){h<-0
+              }else(h<-data[l,(i-2)]-(j-k))
+              data[l,i]<-h
+            }
+          }
+        }
+      } 
+    }
+  }
+  
+  for(i in 1:dim(data)[2]){
+    for(l in 1:dim(data)[1]){
+      if(is.na(data[l,i])==T){
+        if(i<(dim(data)[2]-1)){ 
+          if(is.na(data[l,(i+1)])==F){
+            val<-as.vector(as.matrix(which(clusterCut==clu.matrix[l,i]))[,1])
+            sd.1.j[l,i]<-rnorm(1, mean=0, sd=sd(!is.na(data[c(val),i])))
+            sd.1.k[l,i]<-rnorm(1, mean=0, sd=sd(!is.na(data[c(val),(i+1)])))
+            j<-mean(data[c(val),i],na.rm = T)+sd.1.j[l,i]
+            k<-mean(data[c(val),(i+1)], na.rm = T)+sd.1.k[l,i]
+            if(is.na(j)==F && is.na(k)==F){
+              if((data[l,(i+1)]+(j-k))>1){h<-1
+              }else if((data[l,(i+1)]+(j-k))<0){h<-0
+              }else(h<-data[l,(i+1)]+(j-k))
+              data[l,i]<-h
+            }
+          }
+          if(is.na(data[l,(i+1)])==T && is.na(data[l,(i+2)])==F){
+            val<-as.vector(as.matrix(which(clusterCut==clu.matrix[l,i]))[,1])
+            sd.1.j[l,i]<-rnorm(1, mean=0, sd=sd(!is.na(data[c(val),i])))
+            sd.1.k[l,i]<-rnorm(1, mean=0, sd=sd(!is.na(data[c(val),(i+2)])))
+            j<-mean(data[c(val),i],na.rm = T)+sd.1.j[l,i]
+            k<-mean(data[c(val),(i+2)], na.rm = T)+sd.1.k[l,i]
+            if(is.na(j)==F && is.na(k)==F){
+              if((data[l,(i+2)]+(j-k))>1){h<-1
+              }else if((data[l,(i+2)]+(j-k))<0){h<-0
+              }else(h<-data[l,(i+2)]+(j-k))
+              data[l,i]<-h
+            }
+          }
+        }
+        if(i==(dim(data)[2]-1)){ 
+          if(is.na(data[l,(i-1)])==F){
+            val<-as.vector(as.matrix(which(clusterCut==clu.matrix[l,i]))[,1])
+            sd.1.j[l,i]<-rnorm(1, mean=0, sd=sd(!is.na(data[c(val),i])))
+            sd.1.k[l,i]<-rnorm(1, mean=0, sd=sd(!is.na(data[c(val),(i-1)])))
+            j<-mean(data[c(val),i],na.rm = T)+sd.1.j[l,i]
+            k<-mean(data[c(val),(i-1)], na.rm = T)+sd.1.k[l,i]
+            if(is.na(j)==F && is.na(k)==F){
+              if((data[l,(i-1)]-(j-k))>1){h<-1
+              }else if((data[l,(i-1)]-(j-k))<0){h<-0
+              }else(h<-data[l,(i-1)]-(j-k))
+              data[l,i]<-h
+            }
+          }
+          if(is.na(data[l,(i-1)])==T && is.na(data[l,(i-2)])==F){
+            val<-as.vector(as.matrix(which(clusterCut==clu.matrix[l,i]))[,1])
+            sd.1.j[l,i]<-rnorm(1, mean=0, sd=sd(!is.na(data[c(val),i])))
+            sd.1.k[l,i]<-rnorm(1, mean=0, sd=sd(!is.na(data[c(val),(i-2)])))
+            j<-mean(data[c(val),i],na.rm = T)+sd.1.j[l,i]
+            k<-mean(data[c(val),(i-2)], na.rm = T)+sd.1.k[l,i]
+            if(is.na(j)==F && is.na(k)==F){
+              if((data[l,(i-2)]-(j-k))>1){h<-1
+              }else if((data[l,(i-2)]-(j-k))<0){h<-0
+              }else(h<-data[l,(i-2)]-(j-k))
+              data[l,i]<-h
+            }
+          }
+        }
+        if(i==(dim(data)[2])){ 
+          if(is.na(data[l,(i-1)])==F){
+            val<-as.vector(as.matrix(which(clusterCut==clu.matrix[l,i]))[,1])
+            sd.1.j[l,i]<-rnorm(1, mean=0, sd=sd(!is.na(data[c(val),i])))
+            sd.1.k[l,i]<-rnorm(1, mean=0, sd=sd(!is.na(data[c(val),(i-1)])))
+            j<-mean(data[c(val),i],na.rm = T)+sd.1.j[l,i]
+            k<-mean(data[c(val),(i-1)], na.rm = T)+sd.1.k[l,i]
+            if(is.na(j)==F && is.na(k)==F){
+              if((data[l,(i-1)]-(j-k))>1){h<-1
+              }else if((data[l,(i-1)]-(j-k))<0){h<-0
+              }else(h<-data[l,(i-1)]-(j-k))
+              data[l,i]<-h
+            }
+          }
+          if(is.na(data[l,(i-1)])==T && is.na(data[l,(i-2)])==F){
+            val<-as.vector(as.matrix(which(clusterCut==clu.matrix[l,i]))[,1])
+            sd.1.j[l,i]<-rnorm(1, mean=0, sd=sd(!is.na(data[c(val),i])))
+            sd.1.k[l,i]<-rnorm(1, mean=0, sd=sd(!is.na(data[c(val),(i-2)])))
+            j<-mean(data[c(val),i],na.rm = T)+sd.1.j[l,i]
+            k<-mean(data[c(val),(i-2)], na.rm = T)+sd.1.k[l,i]
+            if(is.na(j)==F && is.na(k)==F){
+              if((data[l,(i-2)]-(j-k))>1){h<-1
+              }else if((data[l,(i-2)]-(j-k))<0){h<-0
+              }else(h<-data[l,(i-2)]-(j-k))
+              data[l,i]<-h
+            }
+          }
+        }
+      } 
+    }
+  }
+  
+  result<-list(data=data, clu.matrix=clu.matrix, sd.1.j=sd.1.j, sd.1.k=sd.1.k)
+}
+
+### MVLS fuction ###
+
+mvls.print<-function(data, d, method='h', varmatrix=F, kmax=20){
+  if(method=='h' && varmatrix==F){
+    data<-exclude(data)
+    clusters <- hclust(dist(data))
+    return(plot(clusters))
+  } else if(method=='h' && varmatrix==T){
+    data<-toclusterfunc.noimp(data,d)$vari.matrix
+    clusters <- hclust(dist(data))
+    return(plot(clusters))
+  }else if (method=='k' && varmatrix==F){
+    wss <- sapply(1:kmax, function(k){kmeans(na.omit(data), k, nstart=50,iter.max = 15 )$tot.withinss})
+    plot(1:kmax, wss, type="b", pch = 19, frame = FALSE, 
+         xlab="Number of clusters K",
+         ylab="Total within-clusters sum of squares")
+  } else if (method=='k' && varmatrix==T){
+    data<-toclusterfunc.noimp(data,d)$vari.matrix
+    wss <- sapply(1:kmax, function(k){kmeans(na.omit(data), k, nstart=50,iter.max = 15 )$tot.withinss})
+    plot(1:kmax, wss, type="b", pch = 19, frame = FALSE, 
+         xlab="Number of clusters K",
+         ylab="Total within-clusters sum of squares")
+  }else{cat('Error: only k method and h method permitted')}
+}
+
+mvls<-function(data, d=0.1, method='k', cluster=6, nstart=10, pre.imp=F, imp.method='mean'){
+  if(pre.imp==T){
+    results<-toclusterfunc.imp(data,d,imp.method)
+  }else if(pre.imp==F){
+    results<-toclusterfunc.noimp(data,d)
+  }
+  data.f<-results$data
+  index.f<-results$index
+  vari.matrix.f<-results$vari.matrix
+  result<-imputation.kh(data.f, vari.matrix.f, method, cluster, nstart)
+  db<-result$data*index.f
+  sd.1.j<-result$sd.1.j*index.f
+  sd.1.k=result$sd.1.k*index.f
+  return(list(data=db, cluster=result$clu.matrix, matrix=results$matrix, sd.1.j=sd.1.j, sd.1.k=sd.1.k))
+}
+
+mvlsboot<-function(data, d=0.1, method='k', cluster=12, nstart=20, imp=F, imp.method='mean', boot='medium'){
+  sd.2<-matrix(c(rep(NA,(dim(data)[2]*dim(data)[1]))),ncol=dim(data)[2],nrow=dim(data)[1])
+  result.boot<-data
+  if(boot=='low'){
+    db.boot.1<-mvls(data, d, method, cluster, nstart,imp, imp.method)$data
+    db.boot.2<-mvls(data, d, method, cluster, nstart,imp, imp.method)$data
+    db.boot.3<-mvls(data, d, method, cluster, nstart,imp, imp.method)$data
+    db.boot.4<-mvls(data, d, method, cluster, nstart,imp, imp.method)$data
+    db.boot.5<-mvls(data, d, method, cluster, nstart,imp, imp.method)$data
+    for (i in 1:dim(result.boot)[2]){
+      for (l in 1:dim(result.boot)[1]) {
+        sd.2[l,i]<-rnorm(1,mean=0,sd=sd(c(db.boot.1[l,i],db.boot.2[l,i],db.boot.3[l,i],db.boot.4[l,i],db.boot.5[l,i]),na.rm = T))
+        result.boot[l,i]<-mean(c(db.boot.1[l,i],db.boot.2[l,i],db.boot.3[l,i],db.boot.4[l,i],db.boot.5[l,i]),na.rm = T)+sd.2[l,i]
+      }
+    }
+  }
+  if(boot=='medium'){
+    db.boot.1<-mvls(data, d, method, cluster, nstart,imp, imp.method)$data
+    db.boot.2<-mvls(data, d, method, cluster, nstart,imp, imp.method)$data
+    db.boot.3<-mvls(data, d, method, cluster, nstart,imp, imp.method)$data
+    db.boot.4<-mvls(data, d, method, cluster, nstart,imp, imp.method)$data
+    db.boot.5<-mvls(data, d, method, cluster, nstart,imp, imp.method)$data
+    db.boot.6<-mvls(data, d, method, cluster, nstart,imp, imp.method)$data
+    db.boot.7<-mvls(data, d, method, cluster, nstart,imp, imp.method)$data
+    db.boot.8<-mvls(data, d, method, cluster, nstart,imp, imp.method)$data
+    db.boot.9<-mvls(data, d, method, cluster, nstart)$data
+    db.boot.10<-mvls(data, d, method, cluster, nstart)$data
+    for (i in 1:dim(result.boot)[2]){
+      for (l in 1:dim(result.boot)[1]) {
+        sd.2[l,i]<-rnorm(1,mean=0, sd=sd(c(db.boot.1[l,i],db.boot.2[l,i],db.boot.3[l,i],db.boot.4[l,i],db.boot.5[l,i],db.boot.6[l,i],db.boot.7[l,i],db.boot.8[l,i],db.boot.9[l,i],db.boot.10[l,i]),na.rm = T))
+        result.boot[l,i]<-mean(c(db.boot.1[l,i],db.boot.2[l,i],db.boot.3[l,i],db.boot.4[l,i],db.boot.5[l,i],db.boot.6[l,i],db.boot.7[l,i],db.boot.8[l,i],db.boot.9[l,i],db.boot.10[l,i]),na.rm = T)+sd.2[l,i]
+      }
+    }
+  }
+  if(boot=='high'){
+    db.boot.1<-mvls(data, d, method, cluster, nstart,imp, imp.method)$data
+    db.boot.2<-mvls(data, d, method, cluster, nstart,imp, imp.method)$data
+    db.boot.3<-mvls(data, d, method, cluster, nstart,imp, imp.method)$data
+    db.boot.4<-mvls(data, d, method, cluster, nstart,imp, imp.method)$data
+    db.boot.5<-mvls(data, d, method, cluster, nstart,imp, imp.method)$data
+    db.boot.6<-mvls(data, d, method, cluster, nstart,imp, imp.method)$data
+    db.boot.7<-mvls(data, d, method, cluster, nstart,imp, imp.method)$data
+    db.boot.8<-mvls(data, d, method, cluster, nstart,imp, imp.method)$data
+    db.boot.9<-mvls(data, d, method, cluster, nstart,imp, imp.method)$data
+    db.boot.10<-mvls(data, d, method, cluster, nstart,imp, imp.method)$data
+    db.boot.11<-mvls(data, d, method, cluster, nstart,imp, imp.method)$data
+    db.boot.12<-mvls(data, d, method, cluster, nstart,imp, imp.method)$data
+    db.boot.13<-mvls(data, d, method, cluster, nstart,imp, imp.method)$data
+    db.boot.14<-mvls(data, d, method, cluster, nstart,imp, imp.method)$data
+    db.boot.15<-mvls(data, d, method, cluster, nstart,imp, imp.method)$data
+    for (i in 1:dim(result.boot)[2]){
+      for (l in 1:dim(result.boot)[1]) {
+        sd.2[l,i]<-rnorm(1,mean=0, sd=sd(c(db.boot.1[l,i],db.boot.2[l,i],db.boot.3[l,i],db.boot.4[l,i],db.boot.5[l,i],db.boot.6[l,i],db.boot.7[l,i],db.boot.8[l,i],db.boot.9[l,i],db.boot.10[l,i],db.boot.11[l,i],db.boot.12[l,i],db.boot.13[l,i],db.boot.14[l,i],db.boot.15[l,i]),na.rm = T))
+        result.boot[l,i]<-mean(c(db.boot.1[l,i],db.boot.2[l,i],db.boot.3[l,i],db.boot.4[l,i],db.boot.5[l,i],db.boot.6[l,i],db.boot.7[l,i],db.boot.8[l,i],db.boot.9[l,i],db.boot.10[l,i],db.boot.11[l,i],db.boot.12[l,i],db.boot.13[l,i],db.boot.14[l,i],db.boot.15[l,i]),na.rm = T)+sd.2[l,i]
+      }
+    }
+  }
+  return(list(data=result.boot,sd.2=sd.2))
+}
+
+###visualdiagmvls
+
+visualdiagmvls<-function(mvls){
+  matrix<-mvls$matrix
+  Cluster<-as.character(as.vector(mvls$cluster[,1]))
+  id<-seq(1,dim(matrix)[1], by=1)
+  matrix<-data.frame(id,matrix,Cluster)
+  matrix.ggplot<-reshape(na.omit(matrix),idvar ="id", varying=list(2:(dim(matrix)[2]-1)), direction = "long")
+  ggplot(data=matrix.ggplot, aes(x=time, y=a, colour=Cluster, group=id))+geom_line(alpha=.5)+ggtitle("Distribuzione dei pattern")+labs (x="Time", y = "Values")+theme_classic()
+}
+
+mvls.print(db.prov,d=0.1,method = 'k',varmatrix = T, kmax=7)
+
+mvls(data=db.prov, d=0.1, method = 'k', cluster = 4, nstart = 20, pre.imp = T, imp.method = "locf")
+
+visualdiagmvls(prova)
+
+mvlsboot(db.prov, d=0.1, method = 'k', cluster = 6, nstart = 20, boot='low', imp = T, imp.method = "mean")
