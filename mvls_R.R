@@ -6,7 +6,10 @@ library(mice)
 library(zoo)
 library(reshape2)
 
+#Function included in the final functions 
+
 ### Exclude no long data ###
+#This function permit to delete rows with any values
 
 exclude<-function(data){
   db.null<-data
@@ -24,6 +27,7 @@ exclude<-function(data){
 }
 
 ### Normalize function ###
+#This function permit to normalize data (each row for the higher value f the row
 
 normalize <- function(data){
   index<-NULL
@@ -35,6 +39,7 @@ normalize <- function(data){
 }
 
 ### Variation matrix ###
+#This function permit to create the matrix of variation that it's used to cluster data
 
 var.matrix<-function(data,d=.1){
   matrix.1<-data.frame(NULL)
@@ -85,6 +90,8 @@ var.matrix<-function(data,d=.1){
 }
 
 ###  Pre-impute data ###
+#This function permit to pre-impute data to create variable matrix when all missing value rows are grouped into the same cluster
+
 preimputation<-function(data, imp.method='mean'){
   if(imp.method=='mean'){
     data<-mice(data, method = 'mean',printFlag = F)
@@ -101,6 +108,7 @@ preimputation<-function(data, imp.method='mean'){
 }
 
 ### Function toclusterfunc ###
+#These function includes other function to simplify end funcion code
 
 toclusterfunc.noimp<-function(data, d){
   data<-exclude(data)
@@ -125,6 +133,7 @@ toclusterfunc.imp<-function(data, d, imp.method='mean'){
 }
 
 ### Imputation of missing data ###
+#This function permit to impute missing value using cluster from var.matrix builted on pre-imputed or not data
 
 imputation.kh<-function(data, vari.matrix, method='k', cluster=6, nstart=20){
   if(method=='k'){
@@ -322,8 +331,12 @@ imputation.kh<-function(data, vari.matrix, method='k', cluster=6, nstart=20){
   result<-list(data=data, clu.matrix=clu.matrix, sd.1.j=sd.1.j, sd.1.k=sd.1.k)
 }
 
-### MVLS fuction ###
+    
+#End MVLS fuction
 
+### MVLS.PRINT ###
+# This function permit to identify best k values using some plot (different for k and h method) using original dataset or var.matrix
+    
 mvls.print<-function(data, d, method='h', varmatrix=F, kmax=20){
   if(method=='h' && varmatrix==F){
     data<-exclude(data)
@@ -347,6 +360,9 @@ mvls.print<-function(data, d, method='h', varmatrix=F, kmax=20){
   }else{cat('Error: only k method and h method permitted')}
 }
 
+### MVLS ###
+#This function permit to impute a single dataset and to obtain sd used to this imputation (sd.1)
+    
 mvls<-function(data, d=0.1, method='k', cluster=6, nstart=10, pre.imp=F, imp.method='mean'){
   if(pre.imp==T){
     results<-toclusterfunc.imp(data,d,imp.method)
@@ -362,6 +378,9 @@ mvls<-function(data, d=0.1, method='k', cluster=6, nstart=10, pre.imp=F, imp.met
   sd.1.k=result$sd.1.k*index.f
   return(list(data=db, cluster=result$clu.matrix, matrix=results$matrix, sd.1.j=sd.1.j, sd.1.k=sd.1.k))
 }
+
+### MVLSBOOT ###
+#This function permit to relize multiple imputation (n=5,10,15) and to obtain sd used for missing value imputation (sd.2)
 
 mvlsboot<-function(data, d=0.1, method='k', cluster=12, nstart=20, imp=F, imp.method='mean', boot='medium'){
   sd.2<-matrix(c(rep(NA,(dim(data)[2]*dim(data)[1]))),ncol=dim(data)[2],nrow=dim(data)[1])
@@ -423,7 +442,8 @@ mvlsboot<-function(data, d=0.1, method='k', cluster=12, nstart=20, imp=F, imp.me
   return(list(data=result.boot,sd.2=sd.2))
 }
 
-###visualdiagmvls
+### VISUALDIAGMLVS ###
+#This function permit to realize a plot showing cluster pattern with different color and permit to identify adeguate cluserization
 
 visualdiagmvls<-function(mvls){
   matrix<-mvls$matrix
