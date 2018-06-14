@@ -1,3 +1,27 @@
+### To do ###
+
+#- Code vectorization
+#- library(pvclust)
+#- library(mclust)
+#- library(fpc)
+#- Random dataset development to test efficacy between mvls and other method in litterature
+#- Thesis write
+
+### Problems ###
+
+#- Debug mvls R pack
+#- Automatally connected library with mvls package
+
+###########################################
+###########################################
+#INSTALL PACKAGE FOR GIT-HUB
+
+library(devtools)
+install_github("helpstatanalysis/mvls")
+
+###########################################
+###########################################
+
 ### Library ###
 
 library(randomForestSRC)
@@ -332,7 +356,7 @@ imputation.kh<-function(data, vari.matrix, method='k', cluster=6, nstart=20){
 }
 
     
-#End MVLS fuction
+#Final MVLS fuction
 
 ### MVLS.PRINT ###
 # This function permit to identify best k values using some plot (different for k and h method) using original dataset or var.matrix
@@ -454,10 +478,31 @@ visualdiagmvls<-function(mvls){
   ggplot(data=matrix.ggplot, aes(x=time, y=a, colour=Cluster, group=id))+geom_line(alpha=.5)+ggtitle("Distribuzione dei pattern")+labs (x="Time", y = "Values")+theme_classic()
 }
 
-mvls.print(db.prov,d=0.1,method = 'k',varmatrix = T, kmax=7)
+############################################
+############      ESEMPIO       ############
+    
+db.prov<-data.frame(sample(1:100, 300, replace=T),sample(1:100, 300, replace=T),sample(1:100, 300, replace=T),sample(1:100, 300, replace=T))
+names(db.prov)<-c('a','b','c','d')
 
-mvls(data=db.prov, d=0.1, method = 'k', cluster = 4, nstart = 20, pre.imp = T, imp.method = "locf")
+db.prov[240,1]<-NA 
+db.prov[241,2]<-NA
+db.prov[242,3]<-NA
+db.prov[243,4]<-NA
+db.prov[244,1:2]<-NA
+db.prov[245,3:4]<-NA
+db.prov[246,2:3]<-NA
+db.prov[247,1:2]<-NA
+db.prov[248,2:4]<-NA
+db.prov[249,1:4]<-NA
 
-visualdiagmvls(prova)
-
-mvlsboot(db.prov, d=0.1, method = 'k', cluster = 6, nstart = 20, boot='low', imp = T, imp.method = "mean")
+mvls.print(db.prov, d=0.1, method = "k", varmatrix = F)
+mvls.print(db.prov, d=0.1, method = "h", varmatrix = T)
+mvls.print(db.prov, d=0.1, method = "h", varmatrix = F)
+res<-mvls(db.prov,d=0.1,cluster = 6, method = "k")
+res$sd.1
+res<-mvls(db.prov,d=0.1,cluster = 6, method = "k", pre.imp = T, imp.method = "locf")
+res$sd.1
+visualdiagmvls(res)
+res.boot<-mvlsboot(db.prov, d=0.1, method='k', boot = "high", pre.imp = T, imp.method = "locf")
+res.boot$data
+res.boot$sd.2
