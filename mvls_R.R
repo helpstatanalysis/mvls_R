@@ -1,18 +1,3 @@
-### To do ###
-
-#- Code vectorization
-#- library(pvclust)
-#- library(mclust)
-#- library(fpc)
-#- Detail explication of functions
-#- Random dataset development to test efficacy between mvls and other method in litterature
-#- Thesis write
-
-### Problems ###
-
-#- Debug mvls R pack
-#- Automatally connected library with mvls package
-
 ###########################################
 ###########################################
 #INSTALL PACKAGE FOR GIT-HUB
