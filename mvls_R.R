@@ -1,6 +1,18 @@
 ###########################################
 ###########################################
-#INSTALL PACKAGE FOR GIT-HUB
+#NEWS
+
+#VERSION 0.2 RELEASED
+#-BUG RESOLVED (attached library)
+#-FUNCTION VISUALDIAGMVLS PERMIT TO PLOT, NOT ONLY ALL CLUSTER TOGETHER, BUT ALSO SINGLE PLOT
+#-NEW MANUALS
+#-NEW EXAMPLES
+
+#THERE IS AN OPEN PROJECT AT https://github.com/helpstatanalysis/mvls_code/projects/1
+
+###########################################
+###########################################
+#INSTALL PACKAGE FOR GIT-HUB (v 0.2)
 
 library(devtools)
 install_github("helpstatanalysis/mvls")
@@ -386,7 +398,7 @@ mvls<-function(data, d=0.1, method='k', cluster=6, nstart=10, pre.imp=F, imp.met
   db<-result$data*index.f
   sd.1.j<-result$sd.1.j*index.f
   sd.1.k=result$sd.1.k*index.f
-  return(list(data=db, cluster=result$clu.matrix, matrix=results$matrix, sd.1.j=sd.1.j, sd.1.k=sd.1.k))
+  return(list(data=db, data.norm=result$data, cluster=result$clu.matrix, matrix=results$matrix, sd.1.j=sd.1.j, sd.1.k=sd.1.k))
 }
 
 ### MVLSBOOT ###
@@ -454,18 +466,30 @@ mvlsboot<-function(data, d=0.1, method='k', cluster=12, nstart=20, imp=F, imp.me
 
 ### VISUALDIAGMLVS ###
 #This function permit to realize a plot showing cluster pattern with different color and permit to identify adeguate cluserization
+#New releasing in version 0.2
 
-visualdiagmvls<-function(mvls){
-  matrix<-mvls$matrix
-  Cluster<-as.character(as.vector(mvls$cluster[,1]))
-  id<-seq(1,dim(matrix)[1], by=1)
-  matrix<-data.frame(id,matrix,Cluster)
-  matrix.ggplot<-reshape(na.omit(matrix),idvar ="id", varying=list(2:(dim(matrix)[2]-1)), direction = "long")
-  ggplot(data=matrix.ggplot, aes(x=time, y=a, colour=Cluster, group=id))+geom_line(alpha=.5)+ggtitle("Distribuzione dei pattern")+labs (x="Time", y = "Values")+theme_classic()
+visualdiagmvls<-function(mvls, method="multiple", cluster, norm=F){
+  if(method=="multiple"){
+    if(norm=="TRUE"){matrix<-mvls$data.norm}else if(norm=="FALSE"){matrix<-mvls$matrix}
+    Cluster<-as.character(as.vector(mvls$cluster[,1]))
+    id<-seq(1,dim(matrix)[1], by=1)
+    matrix<-data.frame(id,matrix,Cluster)
+    matrix.ggplot<-reshape(na.omit(matrix),idvar ="id", varying=list(2:(dim(matrix)[2]-1)), direction = "long")
+    ggplot(data=matrix.ggplot, aes(x=time, y=a, colour=Cluster, group=id))+geom_line(alpha=.5)+ggtitle("Distribuzione dei pattern")+labs (x="Time", y = "Values")+theme_classic()
+  }else if(method=="single"){
+    if(norm=="TRUE"){matrix<-mvls$data.norm}else if(norm=="FALSE"){matrix<-mvls$matrix}
+    Cluster<-as.vector(mvls$cluster[,1])
+    data<-cbind(matrix,Cluster)
+    data.1<-subset(data, data$Cluster == cluster)
+    matrix.1<-data.1[,-dim(data.1)[2]]
+    id<-seq(1,dim(matrix.1)[1], by=1)
+    matrix.ggplot<-reshape(na.omit(matrix.1),idvar ="id", varying=list(1:(dim(matrix.1)[2])), direction = "long")
+    ggplot(data=matrix.ggplot, aes(x=time, y=a, group=id))+geom_line(alpha=.5)+ggtitle(paste0("Distribuzione del pattern",cluster))+labs (x="Time", y = "Values")+theme_classic()
+  }
 }
 
 ############################################
-############      ESEMPIO       ############
+###########      EXAMPLES       ############
     
 db.prov<-data.frame(sample(1:100, 300, replace=T),sample(1:100, 300, replace=T),sample(1:100, 300, replace=T),sample(1:100, 300, replace=T))
 names(db.prov)<-c('a','b','c','d')
@@ -481,14 +505,24 @@ db.prov[247,1:2]<-NA
 db.prov[248,2:4]<-NA
 db.prov[249,1:4]<-NA
 
+library(mvls)
+
 mvls.print(db.prov, d=0.1, method = "k", varmatrix = F)
-mvls.print(db.prov, d=0.1, method = "h", varmatrix = T)
+mvls.print(db.prov, d=0.1, method = "k", varmatrix = T)
 mvls.print(db.prov, d=0.1, method = "h", varmatrix = F)
-res<-mvls(db.prov,d=0.1,cluster = 6, method = "k")
-res$sd.1
-res<-mvls(db.prov,d=0.1,cluster = 6, method = "k", pre.imp = T, imp.method = "locf")
-res$sd.1
-visualdiagmvls(res)
-res.boot<-mvlsboot(db.prov, d=0.1, method='k', boot = "high", pre.imp = T, imp.method = "locf")
-res.boot$data
-res.boot$sd.2
+mvls.print(db.prov, d=0.1, method = "h", varmatrix = T)
+
+mvls<-mvls(db.prov,d=0.1,cluster = 8, method = "k")
+mvls<-mvls(db.prov,d=0.1,cluster = 8, method = "k", pre.imp = T, imp.method = "locf")
+mvls<-mvls(db.prov,d=0.1,cluster = 8, method = "k", pre.imp = T)
+
+mvls<-mvls(db.prov,d=0.1,cluster = 8, method = "h")
+mvls<-mvls(db.prov,d=0.1,cluster = 8, method = "h", pre.imp = T, imp.method = "locf")
+mvls<-mvls(db.prov,d=0.1,cluster = 12, method = "h", pre.imp = T)
+
+visualdiagmvls(mvls, method = "multiple", norm = T)
+visualdiagmvls(mvls, method = "multiple", norm = F)
+for(i in 1:12){print(visualdiagmvls(mvls, method = "single", cluster=i, norm = T))}
+visualdiagmvls(mvls, method = "single", cluster=4)
+
+mvlsboot(db.prov, d=0.1, method = "k", cluster=8, nstart = 20, pre.imp = T, imp.method = "locf", boot="high")
