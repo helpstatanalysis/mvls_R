@@ -1,0 +1,95 @@
+######### DATA SIMULATION ###########
+#### MCAR, MAR & MNAR SIMULATION ####
+#####################################
+
+lss<-function(n,time, mean, sd, sd.e,perc.up,perc.zero,perc.down){ #Data simulation function
+  if(perc.up+perc.zero+perc.down==1){
+  #Zero trend
+  n.zero= round(n*perc.zero)  # Number of record
+  time  # Number of temporal mesurements
+  base=round(rep(rnorm(n.zero, mean, sd)),digits = 2)
+  y=round(base + rnorm(n.zero*time, mean=0, sd.e))
+  data.z=matrix(y, ncol=time)
+  #Positive trend
+  n.positive= round(n*perc.up)  # Number of record
+  time  # Number of temporal mesurements
+  base=round(rnorm(n.positive, mean, sd),digits = 2)
+  base.1=base
+  for(i in 2:time){base.1<-c(base.1,base*(i))}
+  y=round(base.1 + rnorm(n.positive*time, mean=0, sd.e))
+  data.p=matrix(y, ncol=time)
+  #Negative trend
+  n.negative=round(n*perc.down)  # Number of record
+  time  # Number of temporal mesurements
+  base=round(rnorm(n.negative, mean, sd),digits = 2)
+  base.1=base
+  for(i in 2:time){base.1<-c(base.1,base/(i))}
+  y=round(base.1 + rnorm(n.negative*time, mean=0, sd.e))
+  data.u=matrix(y, ncol=time)
+  }else(cat("Error. Total percentage is",perc.down+perc.up+perc.zero))
+  return(rbind(data.z,data.p,data.u))
+}
+
+lss.ampute<-function(n, time, mean, sd, sd.e,perc.up, perc.zero, perc.down, perc.ampute, ampute){ #Ampute function applied on lss function
+  if(ampute=="mcar"){
+    data=lss(n,time, mean, sd, sd.e,perc.up,perc.zero,perc.down)
+    mcar=runif(dim(data)[1]*dim(data)[2], min=0, max=1)
+    data.ampute=as.vector(data)
+    data.ampute=ifelse(mcar<perc.ampute, NA, data)
+    data.ampute=matrix(data.ampute,ncol=time) 
+  }else if(ampute=="mar"){
+    data=lss(n,time, mean, sd, sd.e,perc.up,perc.zero,perc.down)
+    data.ampute<-data
+    for(i in 1:dim(data)[1]){
+      for(j in 4:dim(data)[2]){
+        dif1 = data[i,j-2]-data[i,j-3]
+        dif2 = data[i,j-1]-data[i,j-2]
+        if(dif1>0 && dif2>0){  # if weight goes up twice, drops out
+          data.ampute[i,j:dim(data)[2]] = NA;  break
+        }
+      }
+    }
+  }else if(ampute=="mnar"){
+    data=lss(n,time, mean, sd, sd.e,perc.up,perc.zero,perc.down)
+    data.mnar<-as.vector(data)
+    sort.data.mnar = sort(data.mnar, decreasing=TRUE)
+    nmar   = sort.data.mnar[ceiling(perc.ampute*length(sort.data.mnar))] #Limit to NA
+    data.ampute = ifelse(data.mnar>nmar, NA, data.mnar)  # doesn't show up when heavier
+    data.ampute=matrix(data.ampute,ncol=time)
+  }
+  return(list(data=data, data.ampute=data.ampute))
+}
+
+########### EXAMPLES ###########
+################################
+
+data.mcar<-lss.ampute(n=1000,time=6, mean=20, sd=3, sd.e=1,perc.up=.34,perc.zero=0.33,perc.down=0.33,perc.ampute = 0.20,ampute = "mcar")
+data.mar<-lss.ampute(n=1000,time=6, mean=20, sd=3, sd.e=1,perc.up=.34,perc.zero=0.33,perc.down=0.33,perc.ampute = 0.20,ampute = "mar")
+data.mnar<-lss.ampute(n=1000,time=6, mean=20, sd=3, sd.e=1,perc.up=.34,perc.zero=0.33,perc.down=0.33,perc.ampute = 0.20,ampute = "mnar")
+
+#Application on MVLS (v0.2)
+
+library(mvls)
+
+mvls.print(data.mcar$data.ampute, d=0.1, method = "k", varmatrix = F)
+mvls.print(data.mcar$data.ampute, d=0.1, method = "k", varmatrix = T, kmax=20)
+mvls.print(data.mcar$data.ampute, d=0.1, method = "h", varmatrix = F)
+mvls.print(data.mcar$data.ampute, d=0.1, method = "h", varmatrix = T)
+
+mvls<-as.data.frame(data.mcar$data.ampute)
+
+mvls<-mvls(mvls,d=0.1,cluster = 20, method = "k")
+mvls<-mvls(mvls,d=0.1,cluster = 8, method = "k", pre.imp = T, imp.method = "locf")
+mvls<-mvls(mvls,d=0.1,cluster = 3, method = "k", pre.imp = T)
+
+mvls<-mvls(mvls,d=0.1,cluster = 8, method = "h")
+mvls<-mvls(mvls,d=0.1,cluster = 8, method = "h", pre.imp = T, imp.method = "locf")
+mvls<-mvls(mvls,d=0.1,cluster = 12, method = "h", pre.imp = T)
+
+visualdiagmvls(mvls, method = "multiple", norm = T)
+visualdiagmvls(mvls, method = "multiple", norm = F)
+for(i in 1:8){print(visualdiagmvls(mvls, method = "single", cluster=i, norm = T))}
+visualdiagmvls(mvls, method = "single", cluster=8)
+
+result<-mvlsboot(mvls, d=0.1, method = "k", cluster=12, nstart = 20, pre.imp = T, imp.method = "mean", boot="high")$data
+(data.mcar$data[1:20,]-round(result)[1:20,])/(data.mcar$data[1:20,])
