@@ -18,7 +18,7 @@
 
 ###########################################
 ###########################################
-#INSTALL PACKAGE FOR GIT-HUB (v 0.2)
+#INSTALL PACKAGE FOR GIT-HUB (v 0.3)
 
 library(devtools)
 install_github("helpstatanalysis/mvls")
