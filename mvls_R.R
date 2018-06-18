@@ -2,6 +2,12 @@
 ###########################################
 #NEWS
 
+#VERSION 0.3 RELEASED
+#-NEW FUNCTION:
+# -mvls.Mclust
+# -mvls.pam
+# -mvls.pvclust
+
 #VERSION 0.2 RELEASED
 #-BUG RESOLVED (attached library)
 #-FUNCTION VISUALDIAGMVLS PERMIT TO PLOT, NOT ONLY ALL CLUSTER TOGETHER, BUT ALSO SINGLE PLOT
@@ -488,6 +494,56 @@ visualdiagmvls<-function(mvls, method="multiple", cluster, norm=F){
   }
 }
 
+### MVLS.MCLUST ###
+#This function permits to use Mclust on dataset.
+#New releasing in version 0.3
+    
+mvls.Mclust<-function(data, imp.method='mean', G=1:9){
+  data<-exclude(data)
+  data.pi<-preimputation(data,imp.method)
+  result<-Mclust(data.pi,G)
+  clusterCut<-result$classification
+  plot(result, what = "classification")
+  clu.matrix<-matrix(rep(clusterCut,dim(data)[2]),ncol =(dim(data)[2]))
+  sd.1.j<-matrix(c(rep(NA,(dim(data)[2]*dim(data)[1]))),ncol=dim(data)[2],nrow=dim(data)[1])
+  sd.1.k<-matrix(c(rep(NA,(dim(data)[2]*dim(data)[1]))),ncol=dim(data)[2],nrow=dim(data)[1])
+  for(i in 1:dim(data)[2]){
+    for(l in 1:dim(data)[1]){
+      if(is.na(data[l,i])==T){
+        #[...]
+  
+### MVLS.PAM ###
+#This function permits to use pamk and pam on dataset.
+#New releasing in version 0.3
+        
+mvls.pam<-function(data, imp.method='mean', krange=2:12, scaling=T){
+  data<-exclude(data)
+  data.pi<-preimputation(data,imp.method)
+  k<-pamk(data.pi,krange, scaling)$nc
+  pam<-pam(data.pi, k)
+  pam$clustering
+  clusterCut<-pam$clustering
+  clu.matrix<-matrix(rep(clusterCut,dim(data)[2]),ncol=(dim(data)[2]))
+  sd.1.j<-matrix(c(rep(NA,(dim(data)[2]*dim(data)[1]))),ncol=dim(data)[2],nrow=dim(data)[1])
+  sd.1.k<-matrix(c(rep(NA,(dim(data)[2]*dim(data)[1]))),ncol=dim(data)[2],nrow=dim(data)[1])
+  for(i in 1:dim(data)[2]){
+    for(l in 1:dim(data)[1]){
+      if(is.na(data[l,i])==T){
+        #[...]
+        
+### MVLS.PVCLUST ###
+#This function permits to test h-clustering with pvclust function.
+#New releasing in version 0.3
+        
+mvls.pvclust<-function(mvls, data="data",nboot=1000){
+  if(data=="data"){
+    result<-pvclust(mvls$data, method.hclust="average",method.dist="correlation",use.cor="pairwise.complete.obs",nboot=10)
+  }else if(data=="vari.matrix"){
+    result<-pvclust(mvls$vari.matrix, method.hclust="average",method.dist="correlation",use.cor="pairwise.complete.obs",nboot=10)
+  }
+  return(result)
+}
+
 ############################################
 ###########      EXAMPLES       ############
     
@@ -526,3 +582,19 @@ for(i in 1:12){print(visualdiagmvls(mvls, method = "single", cluster=i, norm = T
 visualdiagmvls(mvls, method = "single", cluster=4)
 
 mvlsboot(db.prov, d=0.1, method = "k", cluster=8, nstart = 20, pre.imp = T, imp.method = "locf", boot="high")
+        
+#NEW!!!
+        
+result<-mvls.pvclust(mvls, data="vari.matrix",nboot=10000)
+plot(result)
+pvrect(result,alpha = 0.95)
+seplot(result)
+        
+result<-mvls.pam(db.prov)
+result$data
+plot(result$pam)
+result$pam$clusinfo
+
+result<-mvls.Mclust(db.prov,imp.method="locf",G=1:12)
+result$data
+result$sd.1
